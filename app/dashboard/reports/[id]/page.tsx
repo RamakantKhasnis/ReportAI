@@ -18,8 +18,11 @@ import {
   Edit3,
   Printer,
   Calendar,
-  Tag
+  Tag,
+  FileDown,
+  Loader2
 } from "lucide-react"
+import { exportReportToPdf } from "@/lib/pdfExporter"
 
 interface ReportData {
   id: string
@@ -46,6 +49,7 @@ export default function ReportDetailPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [copied, setCopied] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [isExportingPdf, setIsExportingPdf] = useState(false)
 
   useEffect(() => {
     async function fetchReport() {
@@ -128,6 +132,27 @@ export default function ReportDetailPage() {
 
   const handlePrint = () => {
     window.print()
+  }
+
+  const handleDownloadPdf = async () => {
+    try {
+      setIsExportingPdf(true)
+      if (viewMode !== "preview") {
+        setViewMode("preview")
+        await new Promise((r) => setTimeout(r, 150))
+      }
+      await exportReportToPdf({
+        elementId: "report-printable-content",
+        filename: title || "report",
+        reportTitle: title
+      })
+    } catch (err: unknown) {
+      console.error("PDF export failed:", err)
+      const message = err instanceof Error ? err.message : "Failed to export PDF"
+      alert(message)
+    } finally {
+      setIsExportingPdf(false)
+    }
   }
 
   if (loading) {
@@ -213,6 +238,27 @@ export default function ReportDetailPage() {
             </Button>
 
             <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadPdf}
+              disabled={isExportingPdf}
+              title="Download PDF Document"
+              className="border-blue-500/30 bg-blue-500/10 text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 text-xs h-9 flex items-center gap-1.5"
+            >
+              {isExportingPdf ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Generating PDF...</span>
+                </>
+              ) : (
+                <>
+                  <FileDown className="h-3.5 w-3.5" />
+                  <span>Download PDF</span>
+                </>
+              )}
+            </Button>
+
+            <Button
               variant="ghost"
               size="sm"
               onClick={handlePrint}
@@ -288,7 +334,10 @@ export default function ReportDetailPage() {
 
         {/* View Mode: Preview or Markdown Editor */}
         {viewMode === "preview" ? (
-          <article className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-12 shadow-2xl print:border-none print:shadow-none print:p-0 print:bg-transparent">
+          <article
+            id="report-printable-content"
+            className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-12 shadow-2xl print:border-none print:shadow-none print:p-0 print:bg-transparent"
+          >
             <MarkdownViewer content={markdown} theme="dark" />
           </article>
         ) : (

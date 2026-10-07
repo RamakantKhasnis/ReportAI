@@ -22,8 +22,14 @@ import {
   BookOpen,
   Wand2,
   Save,
-  RotateCcw
+  RotateCcw,
+  Image as ImageIcon,
+  UploadCloud,
+  X,
+  FileDown,
+  Loader2
 } from "lucide-react"
+import { exportReportToPdf } from "@/lib/pdfExporter"
 
 import type { LucideIcon } from "lucide-react"
 
@@ -47,6 +53,15 @@ export default function NewReportPage() {
   const [copied, setCopied] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [isExportingPdf, setIsExportingPdf] = useState(false)
+  const [imageProof, setImageProof] = useState<{
+    file: File
+    base64Data: string
+    mimeType: string
+    fileName: string
+    previewUrl: string
+    userInstruction: string
+  } | null>(null)
 
   const handleSelectTemplate = (template: ReportTemplate) => {
     setSelectedTemplate(template)
@@ -60,6 +75,33 @@ export default function NewReportPage() {
     if (!title) {
       setTitle(selectedTemplate.name)
     }
+  }
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith("image/")) {
+      alert("Please upload a valid image file (PNG, JPG, or WEBP).")
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      alert("Image size exceeds 10MB limit.")
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const base64Data = event.target?.result as string
+      setImageProof({
+        file,
+        base64Data,
+        mimeType: file.type,
+        fileName: file.name,
+        previewUrl: URL.createObjectURL(file),
+        userInstruction: ""
+      })
+    }
+    reader.readAsDataURL(file)
   }
 
   const handleGenerate = async () => {
@@ -78,7 +120,15 @@ export default function NewReportPage() {
           templateId: selectedTemplate.id,
           tone,
           detailLevel,
-          rawNotes
+          rawNotes,
+          imageProof: imageProof
+            ? {
+                base64Data: imageProof.base64Data,
+                mimeType: imageProof.mimeType,
+                userInstruction: imageProof.userInstruction,
+                fileName: imageProof.fileName
+              }
+            : undefined
         })
       })
 
@@ -144,6 +194,22 @@ export default function NewReportPage() {
     navigator.clipboard.writeText(streamedContent)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleDownloadPdf = async () => {
+    try {
+      setIsExportingPdf(true)
+      await exportReportToPdf({
+        elementId: "report-printable-content-new",
+        filename: title || selectedTemplate.name,
+        reportTitle: title || selectedTemplate.name
+      })
+    } catch (err: unknown) {
+      console.error("PDF export error:", err)
+      alert(err instanceof Error ? err.message : "Failed to export PDF")
+    } finally {
+      setIsExportingPdf(false)
+    }
   }
 
   return (
@@ -256,6 +322,77 @@ export default function NewReportPage() {
                 </div>
               </div>
 
+              {/* Visual Evidence & Proof Image Upload */}
+              <div className="space-y-3 bg-slate-900/60 border border-slate-800/80 rounded-xl p-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ImageIcon className="h-4 w-4 text-blue-400" />
+                    <Label className="text-white text-sm font-semibold">
+                      4. Visual Evidence & Proof (Optional)
+                    </Label>
+                  </div>
+                  <span className="text-xs text-slate-400">PNG, JPG, WEBP (Max 10MB)</span>
+                </div>
+
+                {!imageProof ? (
+                  <label className="border-2 border-dashed border-slate-800 hover:border-blue-500/50 hover:bg-blue-950/10 transition-all rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer group">
+                    <UploadCloud className="h-8 w-8 text-slate-500 group-hover:text-blue-400 mb-2 transition-colors" />
+                    <span className="text-xs font-medium text-slate-300 group-hover:text-white">
+                      Click or drag proof image to attach
+                    </span>
+                    <span className="text-[11px] text-slate-500 mt-0.5">
+                      Charts, error screenshots, architecture diagrams, or receipts
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                    />
+                  </label>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-lg p-2.5">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={imageProof.previewUrl}
+                        alt="Preview"
+                        className="h-16 w-16 object-cover rounded-md border border-slate-700 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-white truncate">{imageProof.fileName}</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {(imageProof.file.size / 1024).toFixed(1)} KB • Attached for Vision Analysis
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setImageProof(null)}
+                        className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-900 rounded-md transition-colors"
+                        title="Remove image"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="image-instructions" className="text-xs text-slate-300 font-medium">
+                        Vision Directive: How should AI analyze this image?
+                      </Label>
+                      <Input
+                        id="image-instructions"
+                        placeholder="e.g., Analyze the Q3 dip in the chart, extract error code from screenshot..."
+                        value={imageProof.userInstruction}
+                        onChange={(e) =>
+                          setImageProof({ ...imageProof, userInstruction: e.target.value })
+                        }
+                        className="bg-slate-950 border-slate-800 text-xs text-white placeholder:text-slate-500"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Generate Button */}
               <div>
                 <Button
@@ -347,6 +484,26 @@ export default function NewReportPage() {
 
               <div className="flex items-center gap-2">
                 <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadPdf}
+                  disabled={isExportingPdf || isGenerating}
+                  className="border-blue-500/30 bg-blue-500/10 text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 text-xs h-9 flex items-center gap-1.5"
+                >
+                  {isExportingPdf ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Generating PDF...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileDown className="h-3.5 w-3.5" />
+                      <span>Download PDF</span>
+                    </>
+                  )}
+                </Button>
+
+                <Button
                   variant="ghost"
                   onClick={handleCopy}
                   className="text-slate-300 hover:text-white hover:bg-slate-800 text-xs h-9"
@@ -392,7 +549,10 @@ export default function NewReportPage() {
             )}
 
             {/* Generated Content Box */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-10 shadow-2xl">
+            <div
+              id="report-printable-content-new"
+              className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-10 shadow-2xl"
+            >
               <MarkdownViewer content={streamedContent} theme="dark" />
             </div>
           </div>

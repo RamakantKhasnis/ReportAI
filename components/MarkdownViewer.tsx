@@ -85,6 +85,21 @@ export function MarkdownViewer({ content, className = "", theme = "dark" }: Mark
           hr: () => (
             <hr className={`my-8 border-t ${isLight ? "border-slate-200" : "border-slate-800"}`} />
           ),
+          img: ({ src, alt }) => (
+            <span className="block my-6">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt={alt || "Proof Evidence"}
+                className="max-h-[450px] w-auto max-w-full rounded-xl border border-slate-700/80 shadow-xl object-contain bg-slate-950/40 mx-auto"
+              />
+              {alt && (
+                <span className="block text-center text-xs text-slate-400 mt-2 italic">
+                  {alt}
+                </span>
+              )}
+            </span>
+          ),
           code: ({ children, className }) => {
             const isInline = !className
             if (isInline) {

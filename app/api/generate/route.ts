@@ -6,7 +6,15 @@ export const runtime = "nodejs"
 
 export async function POST(req: NextRequest) {
   try {
-    const { title, templateId, tone, detailLevel, rawNotes, customInstructions } = await req.json()
+    const {
+      title,
+      templateId,
+      tone,
+      detailLevel,
+      rawNotes,
+      customInstructions,
+      imageProof
+    } = await req.json()
 
     if (!rawNotes || typeof rawNotes !== "string" || !rawNotes.trim()) {
       return NextResponse.json({ error: "Raw notes are required" }, { status: 400 })
@@ -30,6 +38,14 @@ export async function POST(req: NextRequest) {
       comprehensive: "Deliver a deep-dive, comprehensive report covering background, nuances, detailed metrics, and forward-looking risks."
     }
 
+    const cleanBase64 = imageProof?.base64Data
+      ? imageProof.base64Data.replace(/^data:[^;]+;base64,/, "")
+      : null
+    const mimeType = imageProof?.mimeType || "image/png"
+    const imageMarkdown = cleanBase64
+      ? `![Figure 1: ${imageProof?.fileName || "Visual Proof Evidence"}](data:${mimeType};base64,${cleanBase64})`
+      : ""
+
     const prompt = `
 ${template.systemPrompt}
 
@@ -37,6 +53,18 @@ TARGET TITLE: ${title || template.name}
 TONE: ${toneInstructions[tone] || toneInstructions.professional}
 DETAIL LEVEL: ${detailInstructions[detailLevel] || detailInstructions.balanced}
 ${customInstructions ? `CUSTOM INSTRUCTIONS: ${customInstructions}` : ""}
+${
+  cleanBase64
+    ? `VISUAL EVIDENCE & PROOF INSTRUCTIONS:
+The user has attached an image as proof/evidence (${imageProof?.fileName || "Uploaded Image"}).
+${imageProof?.userInstruction ? `User directive for image: "${imageProof.userInstruction}"` : "Analyze this image thoroughly."}
+Please:
+1. Examine the visual data, charts, numbers, error logs, or diagrams in the image carefully.
+2. In the most appropriate section (or a dedicated 'Visual Evidence & Analysis' section), embed the figure using:
+${imageMarkdown}
+3. Follow the image with a caption and a bulleted analysis of what the image shows, why it matters, and key data extracted from it.`
+    : ""
+}
 
 EXPECTED STRUCTURE & SECTIONS:
 ${template.suggestedSections.map((s, idx) => `${idx + 1}. ${s}`).join("\n")}
@@ -60,11 +88,22 @@ Do not wrap your entire output in a single triple backtick code fence. Write pur
         "gemini-2.5-pro"
       ]
 
+      // Build content input: text prompt + optional image part
+      const contents: Array<string | { inlineData: { data: string; mimeType: string } }> = [prompt]
+      if (cleanBase64) {
+        contents.push({
+          inlineData: {
+            data: cleanBase64,
+            mimeType: mimeType
+          }
+        })
+      }
+
       let result = null
       for (const modelName of candidateModels) {
         try {
           const model = genAI.getGenerativeModel({ model: modelName })
-          result = await model.generateContentStream(prompt)
+          result = await model.generateContentStream(contents)
           break
         } catch (err: unknown) {
           console.warn(`Model ${modelName} unavailable, attempting next model...`, err)
@@ -99,7 +138,7 @@ Do not wrap your entire output in a single triple backtick code fence. Write pur
     }
 
     // Fallback: Intelligent Simulated Streaming if no Gemini API Key is configured yet
-    const fallbackText = generateFallbackReport(template, title, rawNotes)
+    const fallbackText = generateFallbackReport(template, title, rawNotes, imageMarkdown, imageProof?.userInstruction)
     const stream = new ReadableStream({
       async start(controller) {
         const words = fallbackText.split(" ")
@@ -126,7 +165,13 @@ Do not wrap your entire output in a single triple backtick code fence. Write pur
   }
 }
 
-function generateFallbackReport(template: ReportTemplate, title?: string, notes?: string): string {
+function generateFallbackReport(
+  template: ReportTemplate,
+  title?: string,
+  notes?: string,
+  imageMarkdown?: string,
+  imageInstruction?: string
+): string {
   const reportTitle = title || template.name
   return `# ${reportTitle}
 
@@ -154,9 +199,27 @@ ${(notes || "")
   .map((line) => `- **Observation:** ${line.replace(/^[-*•]\s*/, "")}`)
   .join("\n")}
 
+${
+  imageMarkdown
+    ? `---
+
+## 3. Visual Evidence & Proof Analysis
+
+${imageMarkdown}
+
+*Figure 1: Supporting Visual Artifact*
+
+**Analysis & Key Observations:**
+${imageInstruction ? `- **User Directive:** ${imageInstruction}` : ""}
+- **Visual Synthesis:** The provided artifact corroborates documented findings and confirms metrics outlined above.
+- **Verification:** Critical benchmarks and structural thresholds are visually validated.
+`
+    : ""
+}
+
 ---
 
-## 3. Detailed Analysis & Operational Impact
+## 4. Operational Assessment & Recommendations
 
 | Dimension | Assessment | Recommended Action | Priority |
 | :--- | :--- | :--- | :--- |
@@ -166,13 +229,6 @@ ${(notes || "")
 
 ---
 
-## 4. Strategic Recommendations & Action Items
-
-- [ ] **Action Item 1:** Review and sign off on target deliverables by Friday.
-- [ ] **Action Item 2:** Allocate necessary engineering and operational resources to clear current bottlenecks.
-- [ ] **Action Item 3:** Schedule follow-up sync to evaluate metrics against projections.
-
----
-*Report synthesized and structured by ReportAI on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.*
+*Report synthesized and structured by ReportAI on ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}.*
 `
 }
