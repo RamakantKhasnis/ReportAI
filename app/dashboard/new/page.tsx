@@ -161,6 +161,10 @@ export default function NewReportPage() {
     setIsSaving(true)
     setSaveError(null)
 
+    const finalMarkdown = imageProof
+      ? streamedContent.replace(/PROOF_IMAGE_PLACEHOLDER/g, imageProof.base64Data)
+      : streamedContent
+
     try {
       const res = await fetch("/api/reports", {
         method: "POST",
@@ -171,7 +175,7 @@ export default function NewReportPage() {
           tone,
           detail_level: detailLevel,
           raw_input: rawNotes,
-          markdown_content: streamedContent,
+          markdown_content: finalMarkdown,
           tags: [selectedTemplate.id]
         })
       })
@@ -191,7 +195,10 @@ export default function NewReportPage() {
   }
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(streamedContent)
+    const textToCopy = imageProof
+      ? streamedContent.replace(/PROOF_IMAGE_PLACEHOLDER/g, imageProof.base64Data)
+      : streamedContent
+    navigator.clipboard.writeText(textToCopy)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -553,7 +560,14 @@ export default function NewReportPage() {
               id="report-printable-content-new"
               className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-10 shadow-2xl"
             >
-              <MarkdownViewer content={streamedContent} theme="dark" />
+              <MarkdownViewer
+                content={
+                  imageProof
+                    ? streamedContent.replace(/PROOF_IMAGE_PLACEHOLDER/g, imageProof.previewUrl || imageProof.base64Data)
+                    : streamedContent
+                }
+                theme="dark"
+              />
             </div>
           </div>
         )}

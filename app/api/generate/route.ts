@@ -42,9 +42,6 @@ export async function POST(req: NextRequest) {
       ? imageProof.base64Data.replace(/^data:[^;]+;base64,/, "")
       : null
     const mimeType = imageProof?.mimeType || "image/png"
-    const imageMarkdown = cleanBase64
-      ? `![Figure 1: ${imageProof?.fileName || "Visual Proof Evidence"}](data:${mimeType};base64,${cleanBase64})`
-      : ""
 
     const prompt = `
 ${template.systemPrompt}
@@ -56,13 +53,13 @@ ${customInstructions ? `CUSTOM INSTRUCTIONS: ${customInstructions}` : ""}
 ${
   cleanBase64
     ? `VISUAL EVIDENCE & PROOF INSTRUCTIONS:
-The user has attached an image as proof/evidence (${imageProof?.fileName || "Uploaded Image"}).
+The user has attached visual proof/evidence (${imageProof?.fileName || "Uploaded Image"}).
 ${imageProof?.userInstruction ? `User directive for image: "${imageProof.userInstruction}"` : "Analyze this image thoroughly."}
 Please:
 1. Examine the visual data, charts, numbers, error logs, or diagrams in the image carefully.
-2. In the most appropriate section (or a dedicated 'Visual Evidence & Analysis' section), embed the figure using:
-${imageMarkdown}
-3. Follow the image with a caption and a bulleted analysis of what the image shows, why it matters, and key data extracted from it.`
+2. In the most appropriate section (or a dedicated 'Visual Evidence & Analysis' section), embed the figure using this exact tag:
+![Figure 1: ${imageProof?.fileName || "Supporting Visual Artifact"}](PROOF_IMAGE_PLACEHOLDER)
+3. Follow the figure with a clear caption and a bulleted analysis of what the image shows, why it matters, and key data extracted from it.`
     : ""
 }
 
@@ -82,9 +79,9 @@ Do not wrap your entire output in a single triple backtick code fence. Write pur
     if (apiKey) {
       const genAI = new GoogleGenerativeAI(apiKey)
       const candidateModels = [
-        "gemini-3.5-flash",
         "gemini-3.5-flash-lite",
         "gemini-flash-latest",
+        "gemini-3.5-flash",
         "gemini-2.5-pro"
       ]
 
@@ -138,7 +135,10 @@ Do not wrap your entire output in a single triple backtick code fence. Write pur
     }
 
     // Fallback: Intelligent Simulated Streaming if no Gemini API Key is configured yet
-    const fallbackText = generateFallbackReport(template, title, rawNotes, imageMarkdown, imageProof?.userInstruction)
+    const imageTag = cleanBase64
+      ? `![Figure 1: ${imageProof?.fileName || "Supporting Visual Artifact"}](PROOF_IMAGE_PLACEHOLDER)`
+      : ""
+    const fallbackText = generateFallbackReport(template, title, rawNotes, imageTag, imageProof?.userInstruction)
     const stream = new ReadableStream({
       async start(controller) {
         const words = fallbackText.split(" ")
@@ -169,7 +169,7 @@ function generateFallbackReport(
   template: ReportTemplate,
   title?: string,
   notes?: string,
-  imageMarkdown?: string,
+  imageTag?: string,
   imageInstruction?: string
 ): string {
   const reportTitle = title || template.name
@@ -200,12 +200,12 @@ ${(notes || "")
   .join("\n")}
 
 ${
-  imageMarkdown
+  imageTag
     ? `---
 
 ## 3. Visual Evidence & Proof Analysis
 
-${imageMarkdown}
+${imageTag}
 
 *Figure 1: Supporting Visual Artifact*
 
